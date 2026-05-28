@@ -1,0 +1,29 @@
+# ===== Настройки приложения =====
+spring.application.name=polymarket-ai-agent
+
+# ===== Настройки базы данных PostgreSQL =====
+spring.datasource.url=jdbc:postgresql://localhost:5432/polymarket_db
+spring.datasource.username=postgres
+spring.datasource.password=YOUR_DB_PASSWORD
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# ===== Настройки JPA / Hibernate =====
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+
+# ===== Настройки пула соединений HikariCP =====
+spring.datasource.hikari.maximum-pool-size=10
+spring.datasource.hikari.connection-timeout=30000
+
+# ===== Настройки Jackson (JSON) =====
+spring.jackson.deserialization.fail-on-unknown-properties=false
+spring.jackson.serialization.write-dates-as-timestamps=false
+
+# ===== Claude API =====
+anthropic.api.key=YOUR_ANTHROPIC_API_KEY
+
+# ===== Логирование =====
+logging.level.org.example.pet1=DEBUG
+logging.level.org.hibernate.SQL=DEBUG
