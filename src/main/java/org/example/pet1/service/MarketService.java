@@ -149,6 +149,10 @@ public class MarketService {
     public int syncMarkets() {
         long start = System.currentTimeMillis();
         log.info("Синхронизация рынков с Polymarket Gamma API...");
+        log.info("@Transactional из: org.springframework.transaction.annotation.Transactional");
+
+        // Проверка записи в БД через простой save() до основной синхронизации
+        testDbWrite();
 
         List<MarketDto> dtos = fetchAllPagesParallel();
         if (dtos.isEmpty()) {
@@ -156,29 +160,57 @@ public class MarketService {
             return 0;
         }
 
+        log.info("Загружено {} рынков с API, начинаю upsert батчами по {}...", dtos.size(), BATCH_SIZE);
+
         int saved = 0;
-        for (MarketDto dto : dtos) {
-            if (dto.getId() == null) continue;
-            marketRepository.upsertMarket(
-                    dto.getId(),
-                    dto.getQuestion(),
-                    dto.getOutcomePrices(),
-                    dto.getVolume(),
-                    dto.getEndDate(),
-                    dto.getActive(),
-                    dto.getImage(),
-                    dto.getCategory(),
-                    parseProbabilityYes(dto.getOutcomePrices())
-            );
-            saved++;
-            if (saved % BATCH_SIZE == 0) {
-                log.debug("Upsert: {}/{}", saved, dtos.size());
+        int batchNum = 0;
+
+        for (int i = 0; i < dtos.size(); i += BATCH_SIZE) {
+            int end = Math.min(i + BATCH_SIZE, dtos.size());
+            List<MarketDto> batch = dtos.subList(i, end);
+            batchNum++;
+            log.info("Сохраняю батч #{} из {} рынков (обработано {}/{})", batchNum, batch.size(), i, dtos.size());
+            try {
+                for (MarketDto dto : batch) {
+                    if (dto.getId() == null) continue;
+                    marketRepository.upsertMarket(
+                            dto.getId(),
+                            dto.getQuestion(),
+                            dto.getOutcomePrices(),
+                            dto.getVolume(),
+                            dto.getEndDate(),
+                            dto.getActive(),
+                            dto.getImage(),
+                            dto.getCategory(),
+                            parseProbabilityYes(dto.getOutcomePrices())
+                    );
+                    saved++;
+                }
+                log.info("Батч #{} сохранён успешно ({} рынков, итого {})", batchNum, batch.size(), saved);
+            } catch (Exception e) {
+                log.error("Ошибка при сохранении батча #{} (offset {}): {}", batchNum, i, e.getMessage(), e);
             }
         }
 
         long seconds = (System.currentTimeMillis() - start) / 1000;
         log.info("Синхронизировано {} рынков за {} секунд", saved, seconds);
         return saved;
+    }
+
+    /** Тестовая запись в БД через save() для проверки соединения и прав на запись */
+    private void testDbWrite() {
+        try {
+            log.info("[DB-TEST] Проверка записи через marketRepository.save()...");
+            Market test = new Market();
+            test.setMarketId("__test_" + System.currentTimeMillis() + "__");
+            test.setQuestion("DB connection test — safe to delete");
+            test.setActive(false);
+            Market persisted = marketRepository.saveAndFlush(test);
+            marketRepository.deleteById(persisted.getId());
+            log.info("[DB-TEST] Запись в БД работает: save+delete успешно (id={})", persisted.getId());
+        } catch (Exception e) {
+            log.error("[DB-TEST] Ошибка записи в БД: {}", e.getMessage(), e);
+        }
     }
 
     /**
