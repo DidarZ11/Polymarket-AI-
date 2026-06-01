@@ -13,7 +13,11 @@ import java.time.LocalDateTime;
  * Хранит информацию об одном предсказательном рынке в базе данных.
  */
 @Entity
-@Table(name = "markets")
+@Table(name = "markets", indexes = {
+        @Index(name = "idx_market_volume",      columnList = "volume"),
+        @Index(name = "idx_market_probability",  columnList = "probability_yes"),
+        @Index(name = "idx_market_end_date",     columnList = "end_date")
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -51,6 +55,21 @@ public class Market {
     /** Активен ли рынок на Polymarket */
     @Column(name = "active")
     private Boolean active;
+
+    /**
+     * Вероятность YES в процентах (0-100), вычисляется при синхронизации из outcomePrices.
+     * Хранится в БД, чтобы можно было фильтровать и сортировать по ней через JPQL.
+     */
+    @Column(name = "probability_yes")
+    private Double probabilityYes;
+
+    /** URL картинки рынка */
+    @Column(name = "image_url", columnDefinition = "TEXT")
+    private String imageUrl;
+
+    /** Категория рынка (например: sports, crypto, politics) */
+    @Column(name = "category")
+    private String category;
 
     /** Дата и время сохранения записи в нашу БД */
     @Column(name = "created_at", nullable = false, updatable = false)

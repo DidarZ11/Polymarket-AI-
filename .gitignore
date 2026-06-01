@@ -32,6 +32,8 @@ build/
 ### VS Code ###
 .vscode/
 
-### Secrets ###
-src/main/resources/application.properties
+### Logs ###
+*.log
+
+### Local only ###
 .claude/

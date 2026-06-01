@@ -38,4 +38,12 @@ public class MarketDto {
     /** Признак активности рынка */
     @JsonProperty("active")
     private Boolean active;
+
+    /** URL картинки рынка */
+    @JsonProperty("image")
+    private String image;
+
+    /** Категория рынка */
+    @JsonProperty("category")
+    private String category;
 }

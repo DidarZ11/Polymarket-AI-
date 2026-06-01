@@ -10,53 +10,74 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
  * HTTP-клиент для получения данных о рынках с Polymarket Gamma API.
- * Gamma API возвращает прямой JSON-массив (без обёртки data/next_cursor).
+ * Загружает все рынки постранично (offset + limit).
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class PolymarketClient {
 
-    /** URL Gamma API: 20 активных рынков */
-    private static final String GAMMA_API_URL =
-            "https://gamma-api.polymarket.com/markets?limit=20&active=true";
+    /** Базовый URL Gamma API */
+    private static final String GAMMA_API_BASE = "https://gamma-api.polymarket.com/markets";
+
+    /** Размер одной страницы при пагинации */
+    private static final int PAGE_SIZE = 100;
 
     private final RestTemplate restTemplate;
 
     /**
-     * Запрашивает активные рынки с Gamma API.
-     * Ответ — прямой JSON-массив объектов рынков.
+     * Загружает все рынки с Polymarket Gamma API постранично.
+     * Цикл продолжается, пока API возвращает непустые страницы.
      *
-     * @return список DTO рынков, или пустой список при ошибке
+     * @return полный список DTO рынков, или пустой список при ошибке
      */
     public List<MarketDto> fetchMarkets() {
-        try {
-            log.info("Запрашиваю рынки с Polymarket Gamma API: {}", GAMMA_API_URL);
+        List<MarketDto> all = new ArrayList<>();
+        int offset = 0;
+        int pageNum = 1;
 
-            // Gamma API возвращает JSON-массив напрямую, без обёртки
-            ResponseEntity<List<MarketDto>> response = restTemplate.exchange(
-                    GAMMA_API_URL,
-                    HttpMethod.GET,
-                    null,
-                    new ParameterizedTypeReference<List<MarketDto>>() {}
-            );
+        while (true) {
+            String url = GAMMA_API_BASE + "?limit=" + PAGE_SIZE + "&offset=" + offset;
+            try {
+                ResponseEntity<List<MarketDto>> response = restTemplate.exchange(
+                        url,
+                        HttpMethod.GET,
+                        null,
+                        new ParameterizedTypeReference<List<MarketDto>>() {}
+                );
 
-            if (response.getBody() == null) {
-                log.warn("Polymarket Gamma API вернул пустой ответ");
-                return Collections.emptyList();
+                List<MarketDto> page = response.getBody();
+
+                // Пустой ответ — все страницы загружены
+                if (page == null || page.isEmpty()) {
+                    break;
+                }
+
+                all.addAll(page);
+                log.info("Страница {}: загружено {} рынков, всего {}", pageNum, page.size(), all.size());
+
+                // Страница неполная — это последняя
+                if (page.size() < PAGE_SIZE) {
+                    break;
+                }
+
+                offset += PAGE_SIZE;
+                pageNum++;
+
+            } catch (RestClientException e) {
+                // API ограничивает offset (422 offset too large) — прерываем, возвращаем собранное
+                log.warn("Пагинация остановлена на странице {}: {}", pageNum, e.getMessage());
+                break;
             }
-
-            log.info("Получено рынков с Gamma API: {}", response.getBody().size());
-            return response.getBody();
-
-        } catch (RestClientException e) {
-            log.error("Ошибка при запросе к Polymarket Gamma API: {}", e.getMessage());
-            return Collections.emptyList();
         }
+
+        log.info("Итого загружено рынков с Gamma API: {}", all.size());
+        return all;
     }
 }
