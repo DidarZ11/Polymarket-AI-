@@ -148,7 +148,7 @@ public class MarketService {
     @Transactional
     public int syncMarkets() {
         long start = System.currentTimeMillis();
-        log.info("Синхронизация рынков с Polymarket Gamma API...");
+        log.info("=== НАЧАЛО СИНХРОНИЗАЦИИ ===");
         log.info("@Transactional из: org.springframework.transaction.annotation.Transactional");
 
         // Проверка записи в БД через простой save() до основной синхронизации
@@ -194,6 +194,7 @@ public class MarketService {
 
         long seconds = (System.currentTimeMillis() - start) / 1000;
         log.info("Синхронизировано {} рынков за {} секунд", saved, seconds);
+        log.info("=== КОНЕЦ СИНХРОНИЗАЦИИ, сохранено: {} ===", marketRepository.count());
         return saved;
     }
 

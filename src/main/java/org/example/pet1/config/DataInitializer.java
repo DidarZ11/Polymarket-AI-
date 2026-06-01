@@ -7,10 +7,6 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-/**
- * Запускает синхронизацию рынков сразу после старта приложения.
- * ApplicationReadyEvent гарантирует, что БД и все бины уже готовы.
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -20,12 +16,13 @@ public class DataInitializer {
 
     @EventListener(ApplicationReadyEvent.class)
     public void syncOnStartup() {
-        log.info("Приложение запущено — выполняю начальную синхронизацию рынков...");
+        log.info("DataInitializer запущен");
+        log.info("Запускаю синхронизацию рынков при старте (без условий)...");
         try {
             int count = marketService.syncMarkets();
             log.info("Начальная синхронизация завершена: {} рынков загружено", count);
         } catch (Exception e) {
-            log.error("Ошибка начальной синхронизации рынков: {}", e.getMessage());
+            log.error("Ошибка начальной синхронизации рынков: {}", e.getMessage(), e);
         }
     }
 }
