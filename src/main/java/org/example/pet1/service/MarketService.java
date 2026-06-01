@@ -17,10 +17,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Сервисный слой: бизнес-логика работы с рынками.
@@ -31,11 +35,10 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class MarketService {
 
-    /** Размер батча при сохранении рынков */
-    private static final int BATCH_SIZE = 100;
-
-    /** Максимальный разрешённый размер страницы */
+    private static final int BATCH_SIZE    = 500;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int FETCH_THREADS = 10;
+    private static final int PAGES_PER_ROUND = 10;
 
     private final MarketRepository marketRepository;
     private final MarketAnalysisRepository marketAnalysisRepository;
@@ -124,42 +127,83 @@ public class MarketService {
     }
 
     /**
-     * Upsert-синхронизация рынков с Polymarket Gamma API.
-     * Новые рынки — вставляются, существующие — обновляются.
+     * Параллельная загрузка + batch upsert рынков через нативный SQL.
      * История анализов (market_analyses) не затрагивается.
      *
      * @return количество сохранённых/обновлённых рынков
      */
     @Transactional
     public int syncMarkets() {
+        long start = System.currentTimeMillis();
         log.info("Синхронизация рынков с Polymarket Gamma API...");
 
-        List<MarketDto> dtos = polymarketClient.fetchMarkets();
+        List<MarketDto> dtos = fetchAllPagesParallel();
         if (dtos.isEmpty()) {
             log.warn("API не вернул ни одного рынка");
             return 0;
         }
 
-        List<Market> toSave = new ArrayList<>(dtos.size());
+        int saved = 0;
         for (MarketDto dto : dtos) {
             if (dto.getId() == null) continue;
-            // Upsert: обновляем существующий рынок или создаём новый
-            Market market = marketRepository.findByMarketId(dto.getId())
-                    .orElseGet(Market::new);
-            applyDto(market, dto);
-            toSave.add(market);
+            marketRepository.upsertMarket(
+                    dto.getId(),
+                    dto.getQuestion(),
+                    dto.getOutcomePrices(),
+                    dto.getVolume(),
+                    dto.getEndDate(),
+                    dto.getActive(),
+                    dto.getImage(),
+                    dto.getCategory(),
+                    parseProbabilityYes(dto.getOutcomePrices())
+            );
+            saved++;
+            if (saved % BATCH_SIZE == 0) {
+                log.debug("Upsert: {}/{}", saved, dtos.size());
+            }
         }
 
-        int saved = 0;
-        for (int i = 0; i < toSave.size(); i += BATCH_SIZE) {
-            int end = Math.min(i + BATCH_SIZE, toSave.size());
-            marketRepository.saveAll(toSave.subList(i, end));
-            saved += end - i;
-            log.debug("Upsert батч: {}/{}", saved, toSave.size());
-        }
-
-        log.info("Синхронизировано {} рынков (история анализов сохранена)", saved);
+        long seconds = (System.currentTimeMillis() - start) / 1000;
+        log.info("Синхронизировано {} рынков за {} секунд", saved, seconds);
         return saved;
+    }
+
+    /**
+     * Загружает все страницы Polymarket API параллельно.
+     * Запускает по PAGES_PER_ROUND страниц за раз, останавливается когда весь раунд пустой.
+     */
+    private List<MarketDto> fetchAllPagesParallel() {
+        List<MarketDto> all = Collections.synchronizedList(new ArrayList<>());
+        ExecutorService executor = Executors.newFixedThreadPool(FETCH_THREADS);
+        int pageSize = polymarketClient.getPageSize();
+        int batchStart = 0;
+        boolean hasMore = true;
+
+        try {
+            while (hasMore) {
+                List<CompletableFuture<List<MarketDto>>> futures = new ArrayList<>();
+                for (int i = 0; i < PAGES_PER_ROUND; i++) {
+                    final int offset = (batchStart + i) * pageSize;
+                    futures.add(CompletableFuture.supplyAsync(
+                            () -> polymarketClient.fetchPage(offset), executor));
+                }
+
+                hasMore = false;
+                for (CompletableFuture<List<MarketDto>> f : futures) {
+                    List<MarketDto> page = f.join();
+                    if (!page.isEmpty()) {
+                        all.addAll(page);
+                        if (page.size() >= pageSize) hasMore = true;
+                    }
+                }
+                batchStart += PAGES_PER_ROUND;
+            }
+        } finally {
+            executor.shutdown();
+        }
+
+        log.info("Параллельная загрузка завершена: {} рынков", all.size());
+        return all;
     }
 
     /** Конвертирует сущность Market в DTO ответа, берёт probabilityYes из хранимой колонки */
@@ -192,16 +236,4 @@ public class MarketService {
         }
     }
 
-    /** Применяет поля DTO к сущности (новой или существующей) */
-    private void applyDto(Market market, MarketDto dto) {
-        market.setMarketId(dto.getId());
-        market.setQuestion(dto.getQuestion());
-        market.setOutcomePrices(dto.getOutcomePrices());
-        market.setProbabilityYes(parseProbabilityYes(dto.getOutcomePrices()));
-        market.setVolume(dto.getVolume());
-        market.setEndDate(dto.getEndDate());
-        market.setActive(dto.getActive());
-        market.setImageUrl(dto.getImage());
-        market.setCategory(dto.getCategory());
-    }
 }

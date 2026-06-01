@@ -13,11 +13,15 @@ import java.time.LocalDateTime;
  * Хранит информацию об одном предсказательном рынке в базе данных.
  */
 @Entity
-@Table(name = "markets", indexes = {
-        @Index(name = "idx_market_volume",      columnList = "volume"),
-        @Index(name = "idx_market_probability",  columnList = "probability_yes"),
-        @Index(name = "idx_market_end_date",     columnList = "end_date")
-})
+@Table(name = "markets",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_market_id", columnNames = "market_id")
+        },
+        indexes = {
+                @Index(name = "idx_market_volume",      columnList = "volume"),
+                @Index(name = "idx_market_probability",  columnList = "probability_yes"),
+                @Index(name = "idx_market_end_date",     columnList = "end_date")
+        })
 @Data
 @Builder
 @NoArgsConstructor
@@ -30,7 +34,7 @@ public class Market {
     private Long id;
 
     /** Уникальный идентификатор рынка на стороне Polymarket */
-    @Column(name = "market_id", unique = true, nullable = false)
+    @Column(name = "market_id", nullable = false)
     private String marketId;
 
     /** Вопрос рынка, например: "Выиграет ли Трамп выборы?" */

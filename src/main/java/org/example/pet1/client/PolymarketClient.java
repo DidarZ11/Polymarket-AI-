@@ -80,4 +80,26 @@ public class PolymarketClient {
         log.info("Итого загружено рынков с Gamma API: {}", all.size());
         return all;
     }
+
+    /**
+     * Загружает одну страницу рынков по заданному offset.
+     * Возвращает пустой список при любой ошибке (для параллельного вызова).
+     */
+    public List<MarketDto> fetchPage(int offset) {
+        String url = GAMMA_API_BASE + "?limit=" + PAGE_SIZE + "&offset=" + offset;
+        try {
+            ResponseEntity<List<MarketDto>> response = restTemplate.exchange(
+                    url, HttpMethod.GET, null,
+                    new ParameterizedTypeReference<List<MarketDto>>() {});
+            List<MarketDto> page = response.getBody();
+            return page != null ? page : Collections.emptyList();
+        } catch (RestClientException e) {
+            log.warn("Ошибка загрузки страницы offset={}: {}", offset, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    public int getPageSize() {
+        return PAGE_SIZE;
+    }
 }
