@@ -11,6 +11,7 @@ import org.example.pet1.entity.Market;
 import org.example.pet1.service.AnalysisHistoryService;
 import org.example.pet1.service.ClaudeService;
 import org.example.pet1.service.MarketService;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -121,6 +122,7 @@ public class MarketController {
      * POST /api/markets/sync
      * Полная пересинхронизация: очищает таблицу и загружает все рынки с API.
      */
+    @CacheEvict(value = "stats", allEntries = true)
     @PostMapping("/sync")
     public ResponseEntity<Map<String, Object>> syncMarkets() {
         log.info("POST /api/markets/sync — запуск синхронизации");

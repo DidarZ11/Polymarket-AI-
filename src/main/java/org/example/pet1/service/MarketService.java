@@ -16,6 +16,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.scheduling.annotation.Scheduled;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -117,6 +121,7 @@ public class MarketService {
      * Возвращает глобальную статистику по всей базе.
      * avgProbability — среднее по first element outcomePrices, умноженное на 100.
      */
+    @Cacheable("stats")
     public Map<String, Object> getStats() {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("totalMarkets",  marketRepository.count());
@@ -124,6 +129,14 @@ public class MarketService {
         stats.put("totalVolume",   marketRepository.sumVolume());
         stats.put("avgProbability", marketRepository.avgProbabilityYes());
         return stats;
+    }
+
+    /** Плановая синхронизация каждые 6 часов, сбрасывает кэш статистики */
+    @Scheduled(cron = "0 0 */6 * * *")
+    @CacheEvict(value = "stats", allEntries = true)
+    public void scheduledSync() {
+        log.info("Плановая синхронизация рынков (каждые 6 часов)...");
+        syncMarkets();
     }
 
     /**
